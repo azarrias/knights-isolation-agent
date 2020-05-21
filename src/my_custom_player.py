@@ -1,6 +1,7 @@
 
 from sample_players import DataPlayer
 
+DEBUG_MODE = False
 
 class CustomPlayer(DataPlayer):
     """ Implement your own agent to play knight's Isolation
@@ -43,4 +44,63 @@ class CustomPlayer(DataPlayer):
         #          call self.queue.put(ACTION) at least once before time expires
         #          (the timer is automatically managed for you)
         import random
-        self.queue.put(random.choice(state.actions()))
+
+        if DEBUG_MODE:
+          import time
+          from isolation import DebugState
+
+          print("Turn " + str(state.ply_count) + " - Player " + str(self.player_id + 1) + " goes:")
+          print("Available actions: " + ','.join(map(str, state.actions())))
+          debug_board = DebugState.from_state(state)
+          print(debug_board)
+          start = time.process_time()
+
+        if state.ply_count < 2:
+          if 57 in state.actions():
+            action = 57
+          else:
+            action = random.choice(state.actions())
+
+        else:
+          depth = 4
+          action = max(state.actions(), key=lambda a: self.min_value(state.result(a), depth - 1))
+          
+        self.queue.put(action)
+
+        if DEBUG_MODE:
+          print("Chosen action: " + str(action))
+          print("Execute minimax: " + str(time.process_time() - start) + "\n")
+
+    def min_value(self, state, depth):
+      """ Return the game state utility if the game is over,
+      otherwise return the minimum value over all legal successors
+      """
+      if state.terminal_test():
+        return state.utility(self.player_id)
+      if depth <= 0:
+        return self.baseline(state)
+      v = float("inf")
+      for a in state.actions():
+        v = min(v, self.max_value(state.result(a), depth - 1))
+      return v
+
+    def max_value(self, state, depth):
+      """ Return the game state utility if the game is over,
+      otherwise return the maximum value over all legal successors
+      """
+      if state.terminal_test():
+        return state.utility(self.player_id)
+      if depth <= 0:
+        return self.baseline(state)
+      v = float("-inf")
+      for a in state.actions():
+        v = max(v, self.min_value(state.result(a), depth - 1))
+      return v
+
+    # #my_moves - #opponent_moves heuristic
+    def baseline(self, state):
+        own_loc = state.locs[self.player_id]
+        opp_loc = state.locs[1 - self.player_id]
+        own_liberties = state.liberties(own_loc)
+        opp_liberties = state.liberties(opp_loc)
+        return len(own_liberties) - len(opp_liberties)
