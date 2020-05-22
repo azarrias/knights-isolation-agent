@@ -62,8 +62,8 @@ class CustomPlayer(DataPlayer):
             action = random.choice(state.actions())
 
         else:
-          depth = 4
-          action = max(state.actions(), key=lambda a: self.min_value(state.result(a), depth - 1))
+          depth = 5
+          action = self.alpha_beta_search(state, depth)
           
         self.queue.put(action)
 
@@ -71,7 +71,25 @@ class CustomPlayer(DataPlayer):
           print("Chosen action: " + str(action))
           print("Execute minimax: " + str(time.process_time() - start) + "\n")
 
-    def min_value(self, state, depth):
+    def alpha_beta_search(self, state, depth):
+      """ Return the move along a branch of the game tree that
+      has the best possible value.  A move is a pair of coordinates
+      in (column, row) order corresponding to a legal move for
+      the searching player.
+      """
+      alpha = float("-inf")
+      beta = float("inf")
+      best_score = float("-inf")
+      best_move = None
+      for a in state.actions():
+        v = self.min_value(state.result(a), alpha, beta, depth - 1)
+        alpha = max(alpha, v)
+        if v > best_score:
+          best_score = v
+          best_move = a
+      return best_move
+
+    def min_value(self, state, alpha, beta, depth):
       """ Return the game state utility if the game is over,
       otherwise return the minimum value over all legal successors
       """
@@ -81,10 +99,13 @@ class CustomPlayer(DataPlayer):
         return self.baseline(state)
       v = float("inf")
       for a in state.actions():
-        v = min(v, self.max_value(state.result(a), depth - 1))
+        v = min(v, self.max_value(state.result(a), alpha, beta, depth - 1))
+        if v <= alpha:
+          return v
+        beta = min(beta, v)
       return v
 
-    def max_value(self, state, depth):
+    def max_value(self, state, alpha, beta, depth):
       """ Return the game state utility if the game is over,
       otherwise return the maximum value over all legal successors
       """
@@ -94,7 +115,10 @@ class CustomPlayer(DataPlayer):
         return self.baseline(state)
       v = float("-inf")
       for a in state.actions():
-        v = max(v, self.min_value(state.result(a), depth - 1))
+        v = max(v, self.min_value(state.result(a), alpha, beta, depth - 1))
+        if v >= beta:
+          return v
+        alpha = max(alpha, v)
       return v
 
     # #my_moves - #opponent_moves heuristic
