@@ -56,19 +56,14 @@ class CustomPlayer(DataPlayer):
           start = time.process_time()
 
         if state.ply_count < 2:
-          if 57 in state.actions():
-            action = 57
-          else:
-            action = random.choice(state.actions())
+          self.queue.put(random.choice(state.actions()))
 
         else:
-          depth = 5
-          action = self.alpha_beta_search(state, depth)
+          depth_limit = 100
+          for depth in range(1, depth_limit + 1):
+            self.queue.put(self.alpha_beta_search(state, depth))
           
-        self.queue.put(action)
-
         if DEBUG_MODE:
-          print("Chosen action: " + str(action))
           print("Execute minimax: " + str(time.process_time() - start) + "\n")
 
     def alpha_beta_search(self, state, depth):
@@ -96,6 +91,7 @@ class CustomPlayer(DataPlayer):
       if state.terminal_test():
         return state.utility(self.player_id)
       if depth <= 0:
+        #return self.weighted_attacking(state, 2)
         return self.baseline(state)
       v = float("inf")
       for a in state.actions():
@@ -112,6 +108,7 @@ class CustomPlayer(DataPlayer):
       if state.terminal_test():
         return state.utility(self.player_id)
       if depth <= 0:
+        #return self.weighted_attacking(state, 2)
         return self.baseline(state)
       v = float("-inf")
       for a in state.actions():
@@ -123,8 +120,40 @@ class CustomPlayer(DataPlayer):
 
     # #my_moves - #opponent_moves heuristic
     def baseline(self, state):
-        own_loc = state.locs[self.player_id]
-        opp_loc = state.locs[1 - self.player_id]
-        own_liberties = state.liberties(own_loc)
-        opp_liberties = state.liberties(opp_loc)
-        return len(own_liberties) - len(opp_liberties)
+      own_loc = state.locs[self.player_id]
+      opp_loc = state.locs[1 - self.player_id]
+      own_liberties = state.liberties(own_loc)
+      opp_liberties = state.liberties(opp_loc)
+      return len(own_liberties) - len(opp_liberties)
+
+    # attacking heuristic
+    # variation of the baseline heuristic
+    # it is more important to reduce opponents moves
+    # than to increase our player's own moves
+    def weighted_attacking(self, state, weight):
+      own_loc = state.locs[self.player_id]
+      opp_loc = state.locs[1 - self.player_id]
+      own_liberties = state.liberties(own_loc)
+      opp_liberties = state.liberties(opp_loc)
+      return len(own_liberties) - weight * len(opp_liberties)
+
+    # distance to opponent heuristic
+    def opponent_distance(self, state):
+      own_loc = self.ind2xy(state.locs[self.player_id])
+      opp_loc = self.ind2xy(state.locs[1 - self.player_id])
+      return self.manhattanDistance(own_loc, opp_loc)
+
+    def manhattanDistance(self, xy1, xy2):
+      "Returns the Manhattan distance between points xy1 and xy2"
+      return abs(xy1[0] - xy2[0]) + abs(xy1[1] - xy2[1])      
+
+    def ind2xy(self, ind):
+      """ Convert from board index value to xy coordinates
+
+      The coordinate frame is 0 in the bottom right corner, with x increasing
+      along the columns progressing towards the left, and y increasing along
+      the rows progressing towards teh top.
+      """
+      from isolation.isolation import _WIDTH
+      from isolation.isolation import _HEIGHT
+      return (ind % (_WIDTH + 2), ind // (_WIDTH + 2))
