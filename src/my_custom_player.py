@@ -49,22 +49,29 @@ class CustomPlayer(DataPlayer):
           import time
           from isolation import DebugState
 
-          print("Turn " + str(state.ply_count) + " - Player " + str(self.player_id + 1) + " goes:")
+          print("\nTurn " + str(state.ply_count) + " - Player " + str(self.player_id + 1) + " goes:")
           print("Available actions: " + ','.join(map(str, state.actions())))
           debug_board = DebugState.from_state(state)
           print(debug_board)
           start = time.process_time()
 
-        if state.ply_count < 2:
-          self.queue.put(random.choice(state.actions()))
-
+        if state.ply_count <= 4:
+          if self.data is not None and state in self.data and self.data[state] in state.actions():
+            action = self.data[state]
+            if DEBUG_MODE:
+              print("Pick action from opening book: " + str(action))
+            self.queue.put(action)
+          else:
+            self.queue.put(random.choice(state.actions()))
         else:
           depth_limit = 100
           for depth in range(1, depth_limit + 1):
-            self.queue.put(self.alpha_beta_search(state, depth))
-          
-        if DEBUG_MODE:
-          print("Execute minimax: " + str(time.process_time() - start) + "\n")
+            action = self.alpha_beta_search(state, depth)
+            if action is None:
+              action = random.choice(state.actions())
+            if DEBUG_MODE:
+              print("Calculate best action from minimax (depth=" + str(depth) + ") in " + str(time.process_time() - start) + " seconds: " + str(action))
+            self.queue.put(action)
 
     def alpha_beta_search(self, state, depth):
       """ Return the move along a branch of the game tree that
@@ -78,10 +85,13 @@ class CustomPlayer(DataPlayer):
       best_move = None
       for a in state.actions():
         v = self.min_value(state.result(a), alpha, beta, depth - 1)
+#        print("a = " + str(a) + " | v = " + str(v))
         alpha = max(alpha, v)
         if v > best_score:
           best_score = v
           best_move = a
+#      if DEBUG_MODE:
+#        print("AB Search - best_score = " + str(best_score) + " | alpha = " + str(alpha) + " | beta = " + str(beta) + " | actions = " + str(state.actions()))
       return best_move
 
     def min_value(self, state, alpha, beta, depth):
@@ -89,13 +99,24 @@ class CustomPlayer(DataPlayer):
       otherwise return the minimum value over all legal successors
       """
       if state.terminal_test():
+#        if DEBUG_MODE:
+#          print("min value - terminal node with value " + str(state.utility(self.player_id)))
         return state.utility(self.player_id)
       if depth <= 0:
-        #return self.weighted_attacking(state, 2)
+#        if DEBUG_MODE:
+#          print("min value - heuristic value " + str(self.baseline(state)))
         return self.baseline(state)
+        #return self.weighted_attacking(state, 3)
+        #return self.weighted_defensive(state, 3)
+        #return self.weighted_increasingly_attacking(state, 3)
+        #return self.weighted_increasingly_defensive(state, 3)
+        #return self.defensive_to_attacking(state, 3)
+        #return self.attacking_to_defensive(state, 3)
       v = float("inf")
       for a in state.actions():
         v = min(v, self.max_value(state.result(a), alpha, beta, depth - 1))
+#        if DEBUG_MODE:
+#          print("min value - depth = " + str(depth) + " | a = " + str(a) + " | v = " + str(v) + " | alpha = " + str(alpha) + " | beta = " + str(beta) + " | actions = " + str(state.actions()))
         if v <= alpha:
           return v
         beta = min(beta, v)
@@ -106,13 +127,24 @@ class CustomPlayer(DataPlayer):
       otherwise return the maximum value over all legal successors
       """
       if state.terminal_test():
+#        if DEBUG_MODE:
+#          print("max value - terminal node with value " + str(state.utility(self.player_id)))
         return state.utility(self.player_id)
       if depth <= 0:
-        #return self.weighted_attacking(state, 2)
+#        if DEBUG_MODE:
+#          print("max value - heuristic value " + str(self.baseline(state)))
         return self.baseline(state)
+        #return self.weighted_attacking(state, 3)
+        #return self.weighted_defensive(state, 3)
+        #return self.weighted_increasingly_attacking(state, 3)
+        #return self.weighted_increasingly_defensive(state, 3)
+        #return self.defensive_to_attacking(state, 3)
+        #return self.attacking_to_defensive(state, 3)
       v = float("-inf")
       for a in state.actions():
         v = max(v, self.min_value(state.result(a), alpha, beta, depth - 1))
+#        if DEBUG_MODE:
+#          print("max value - depth = " + str(depth) + " | a = " + str(a) + " | v = " + str(v) + " | alpha = " + str(alpha) + " | beta = " + str(beta) + " | actions = " + str(state.actions()))
         if v >= beta:
           return v
         alpha = max(alpha, v)
@@ -137,6 +169,67 @@ class CustomPlayer(DataPlayer):
       opp_liberties = state.liberties(opp_loc)
       return len(own_liberties) - weight * len(opp_liberties)
 
+    # defensive heuristic
+    # variation of the baseline heuristic
+    # it is more important to have available moves
+    # than to reduce the opponents moves
+    def weighted_defensive(self, state, weight):
+      own_loc = state.locs[self.player_id]
+      opp_loc = state.locs[1 - self.player_id]
+      own_liberties = state.liberties(own_loc)
+      opp_liberties = state.liberties(opp_loc)
+      return weight * len(own_liberties) - len(opp_liberties)
+
+    # increase importance of moves as the game goes forward
+    # increasingly attacking player
+    def weighted_increasingly_attacking(self, state, weight):
+      from isolation.isolation import _WIDTH
+      from isolation.isolation import _HEIGHT
+      board_size = _WIDTH * _HEIGHT
+      progress = state.ply_count / board_size
+      own_loc = state.locs[self.player_id]
+      opp_loc = state.locs[1 - self.player_id]
+      own_liberties = state.liberties(own_loc)
+      opp_liberties = state.liberties(opp_loc)
+      return len(own_liberties) - weight * len(opp_liberties) * progress
+
+    # increase importance of moves as the game goes forward
+    # increasingly defensive player
+    def weighted_increasingly_defensive(self, state, weight):
+      from isolation.isolation import _WIDTH
+      from isolation.isolation import _HEIGHT
+      board_size = _WIDTH * _HEIGHT
+      progress = state.ply_count / board_size
+      own_loc = state.locs[self.player_id]
+      opp_loc = state.locs[1 - self.player_id]
+      own_liberties = state.liberties(own_loc)
+      opp_liberties = state.liberties(opp_loc)
+      return weight * len(own_liberties) * progress - len(opp_liberties)
+
+    # will prioritize playing defense on the first half of the game
+    # and prioritize playing attack on the second half
+    def defensive_to_attacking(self, state, weight):
+      from isolation.isolation import _WIDTH
+      from isolation.isolation import _HEIGHT
+      board_size = _WIDTH * _HEIGHT
+      progress = state.ply_count / board_size
+      if progress <= 0.5:
+        return self.weighted_defensive(state, weight)
+      else:
+        return self.weighted_attacking(state, weight)
+
+    # will prioritize playing defense on the first half of the game
+    # and prioritize playing attack on the second half
+    def attacking_to_defensive(self, state, weight):
+      from isolation.isolation import _WIDTH
+      from isolation.isolation import _HEIGHT
+      board_size = _WIDTH * _HEIGHT
+      progress = state.ply_count / board_size
+      if progress <= 0.5:
+        return self.weighted_attacking(state, weight)
+      else:
+        return self.weighted_defensive(state, weight)
+
     # distance to opponent heuristic
     def opponent_distance(self, state):
       own_loc = self.ind2xy(state.locs[self.player_id])
@@ -145,7 +238,12 @@ class CustomPlayer(DataPlayer):
 
     def manhattanDistance(self, xy1, xy2):
       "Returns the Manhattan distance between points xy1 and xy2"
-      return abs(xy1[0] - xy2[0]) + abs(xy1[1] - xy2[1])      
+      return abs(xy1[0] - xy2[0]) + abs(xy1[1] - xy2[1])
+
+    def euclideanDistance(self, xy1, xy2):
+      "Returns the Euclidean distance between points xy1 and xy2"
+      from math import sqrt
+      return sqrt((xy1[0] - xy2[0]) ** 2 + (xy1[1] -xy2[1]) ** 2)
 
     def ind2xy(self, ind):
       """ Convert from board index value to xy coordinates
